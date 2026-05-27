@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import threading
 import webbrowser
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -95,8 +97,13 @@ def load_and_train() -> DashboardModel:
     return DashboardModel(df=df, vectorizer=vectorizer, model=model, summary=summary)
 
 
-MODEL = load_and_train()
+@lru_cache(maxsize=1)
+def get_model() -> DashboardModel:
+    return load_and_train()
+
+
 APP = Flask(__name__)
+app = APP
 
 
 
@@ -121,8 +128,9 @@ def classify_risk(text: str) -> dict:
             'matched_pattern': matched_pattern,
         }
 
-    text_vector = MODEL.vectorizer.transform([normalized_text])
-    probability = float(MODEL.model.predict_proba(text_vector)[0, 1])
+    model_bundle = get_model()
+    text_vector = model_bundle.vectorizer.transform([normalized_text])
+    probability = float(model_bundle.model.predict_proba(text_vector)[0, 1])
     risk_score = round(probability * 100, 2)
 
     if probability < 0.33:
@@ -502,7 +510,7 @@ def index():
 
     return render_template_string(
         DASHBOARD_TEMPLATE,
-        summary=MODEL.summary,
+        summary=get_model().summary,
         result=result,
         input_text=input_text,
         example_rows=EXAMPLE_TEXTS,
@@ -516,6 +524,8 @@ def open_browser_later(url: str) -> None:
 
 
 if __name__ == '__main__':
-    url = 'http://127.0.0.1:5000'
-    open_browser_later(url)
-    APP.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+    port = int(os.environ.get('PORT', '5000'))
+    host = os.environ.get('HOST', '0.0.0.0')
+    if os.environ.get('AUTO_OPEN_BROWSER', '1') == '1' and host in {'127.0.0.1', 'localhost', '0.0.0.0'}:
+        open_browser_later(f'http://127.0.0.1:{port}')
+    APP.run(host=host, port=port, debug=False)
