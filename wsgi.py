@@ -1,0 +1,1 @@
+from dashboard_app import APP as app
